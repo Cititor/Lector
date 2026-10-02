@@ -1,0 +1,788 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Lectura Rápida — Configurable</title>
+<style>
+  :root{
+    --bg:#ffffff;
+    --fg:#111111;
+    --font-family: Georgia, "Times New Roman", serif;
+    --font-weight: 600;
+    --font-style: normal;
+  }
+  html,body{height:100%;margin:0;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--fg);}
+  .container{max-width:1100px;margin:18px auto;padding:18px;box-sizing:border-box;}
+  header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+  h1{font-size:1.25rem;margin:0;}
+  .controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:12px;}
+  .card{background:rgba(0,0,0,0.03);padding:12px;border-radius:8px;}
+  label{display:block;font-size:0.85rem;margin-bottom:6px;color:rgba(0,0,0,0.7);}
+  input[type="number"], input[type="text"], select, input[type="color"], input[type="range"], textarea{
+    width:100%;padding:8px;border-radius:6px;border:1px solid #ccc;box-sizing:border-box;
+  }
+  textarea{font-size:0.95rem;resize:vertical;}
+  .row{display:flex;gap:8px;align-items:center;}
+  .small{font-size:0.85rem;color:#444;}
+  .reader-area{margin-top:18px;display:flex;gap:18px;align-items:flex-start;}
+  .left{flex:1;}
+  .right{width:360px;min-width:260px;}
+  .display{height:220px;border-radius:10px;background:rgba(0,0,0,0.04);display:flex;align-items:center;justify-content:center;padding:18px;box-sizing:border-box;}
+  .word{font-size:48px;line-height:1; font-weight:var(--font-weight); font-style:var(--font-style); font-family:var(--font-family); color:var(--fg); text-align:center; width:100%;}
+  .meta{display:flex;justify-content:space-between;margin-top:8px;font-size:0.9rem;}
+  .btn{padding:10px 14px;border-radius:8px;border:0;background:#0b5cff;color:white;cursor:pointer;font-weight:600;}
+  .btn.secondary{background:#6c757d;}
+  .btn.ghost{background:transparent;border:1px solid #ccc;color:inherit;}
+  .paragraphs{max-height:220px;overflow:auto;padding:8px;border-radius:8px;background:rgba(0,0,0,0.03);}
+  .paragraphs button{display:block;width:100%;text-align:left;padding:8px;border-radius:6px;border:0;background:transparent;cursor:pointer;}
+  .paragraphs button.active{background:rgba(11,92,255,0.08);}
+  .footer{margin-top:18px;font-size:0.9rem;color:#333;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;}
+  .small-muted{font-size:0.85rem;color:#666;}
+  .inline{display:inline-block;}
+  .settings-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;}
+  .stat-block{display:flex;flex-direction:column;gap:4px;}
+  .stat-value{font-weight:700;}
+  @media (max-width:800px){ .reader-area{flex-direction:column;} .right{width:100%} .word{font-size:36px;} }
+</style>
+<!-- PDF.js y JSZip desde CDN (necesarios para procesar PDF y archivos ZIP como docx/odt) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.172/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Lectura Rápida — Configurable</h1>
+    <div class="small-muted">Soporta .txt, .pdf, .docx, .odt · Todo en un solo archivo</div>
+  </header>
+
+  <section class="controls" aria-label="Controles principales">
+    <div class="card">
+      <label for="inputText"><strong>Texto a leer</strong> (separar párrafos con línea en blanco)</label>
+      <textarea id="inputText" rows="8"></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
+        <button id="loadSample" class="btn ghost">Cargar archivo (.txt .pdf .docx .odt)</button>
+        <input id="fileInput" type="file" accept=".txt,.pdf,.docx,.odt,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.oasis.opendocument.text" style="display:none;">
+        <button id="clearText" class="btn secondary">Limpiar</button>
+      </div>
+      <div class="small-muted" style="margin-top:8px;">Si el archivo es grande, la extracción puede tardar unos segundos.</div>
+    </div>
+
+    <div class="card">
+      <label><strong>Tipografía (selecciona una)</strong></label>
+      <select id="fontSelect" aria-label="Seleccionar tipografía">
+        <option value="Georgia, serif">Georgia</option>
+        <option value="'Times New Roman', Times, serif">Times New Roman</option>
+        <option value="Arial, Helvetica, sans-serif">Arial</option>
+        <option value="Helvetica, Arial, sans-serif">Helvetica</option>
+        <option value="'Courier New', Courier, monospace">Courier New</option>
+        <option value="Courier, monospace">Courier</option>
+        <option value="'Trebuchet MS', sans-serif">Trebuchet MS</option>
+        <option value="'Palatino Linotype', 'Book Antiqua', Palatino, serif">Palatino Linotype</option>
+        <option value="'Book Antiqua', Palatino, serif">Book Antiqua</option>
+        <option value="Verdana, Geneva, sans-serif">Verdana</option>
+        <option value="'Lucida Console', Monaco, monospace">Lucida Console</option>
+        <option value="'Segoe UI', Tahoma, Geneva, sans-serif">Segoe UI</option>
+      </select>
+
+      <label style="margin-top:8px;"><strong>Estilo de texto</strong></label>
+      <select id="fontStyle" aria-label="Seleccionar estilo de fuente">
+        <option value="normal-400">Normal</option>
+        <option value="normal-700">Negrita</option>
+        <option value="italic-400">Cursiva</option>
+        <option value="italic-700">Cursiva y Negrita</option>
+      </select>
+
+      <label style="margin-top:8px;"><strong>Tamaño de fuente (px)</strong></label>
+      <input type="number" id="fontSize" min="8" max="200" value="30">
+
+      <label style="margin-top:8px;"><strong>Color de fondo</strong></label>
+      <input type="color" id="bgColor" value="#ffffff">
+
+      <label style="margin-top:8px;"><strong>Color de texto</strong></label>
+      <input type="color" id="fgColor" value="#111111">
+    </div>
+
+    <div class="card">
+      <label><strong>Velocidad inicial (WPM)</strong></label>
+      <input type="number" id="wpm" min="50" max="2000" value="400">
+      <input type="range" id="wpmRange" min="50" max="2000" value="400" style="margin-top:6px;">
+
+      <label style="margin-top:8px;"><strong>Velocidad final (WPM)</strong></label>
+      <input type="number" id="wpmEnd" min="50" max="2000" value="400">
+      <input type="range" id="wpmEndRange" min="50" max="2000" value="400" style="margin-top:6px;">
+
+      <label style="margin-top:8px;"><strong>Cantidad de palabras por visualización</strong> (mínimo 1)</label>
+      <input type="number" id="wordsPerChunk" min="1" value="1">
+
+      <label style="margin-top:8px;"><strong>Pausa base entre fragmentos</strong></label>
+      <div class="small">La pausa base se calcula desde la velocidad instantánea (interpolada entre inicial y final).</div>
+    </div>
+
+    <div class="card">
+      <label><strong>Pausas por puntuación (multiplicador de la pausa base)</strong></label>
+      <div class="settings-grid" style="margin-top:6px;">
+        <div>
+          <label class="small">Coma ,</label>
+          <input type="number" id="pauseComma" min="0" step="0.1" value="0.5">
+        </div>
+        <div>
+          <label class="small">Punto y coma ;</label>
+          <input type="number" id="pauseSemicolon" min="0" step="0.1" value="0.8">
+        </div>
+        <div>
+          <label class="small">Punto .</label>
+          <input type="number" id="pausePeriod" min="0" step="0.1" value="1.2">
+        </div>
+        <div>
+          <label class="small">Dos puntos :</label>
+          <input type="number" id="pauseColon" min="0" step="0.1" value="1.0">
+        </div>
+        <div>
+          <label class="small">Puntos suspensivos … / ...</label>
+          <input type="number" id="pauseEllipsis" min="0" step="0.1" value="1.6">
+        </div>
+        <div>
+          <label class="small">Otra pausa extra (ms)</label>
+          <input type="number" id="pauseExtraMs" min="0" step="50" value="0">
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <label><strong>Alineación de la palabra</strong></label>
+      <select id="alignment">
+        <option value="center">Centrada</option>
+        <option value="left">Alineada a la izquierda</option>
+        <option value="right">Alineada a la derecha</option>
+      </select>
+
+      <label style="margin-top:8px;"><strong>Palabra inicial (número global)</strong></label>
+      <input type="number" id="startWord" min="1" value="1">
+
+      <label style="margin-top:8px;"><strong>Palabra final (número global, 0 = hasta el final)</strong></label>
+      <input type="number" id="endWord" min="0" value="0">
+    </div>
+
+    <div class="card">
+      <label><strong>Controles de párrafos</strong></label>
+      <div class="small">Los párrafos se detectan por líneas en blanco (punto aparte). Puedes saltar entre párrafos o reiniciar en uno específico.</div>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <input type="number" id="restartParagraph" min="1" value="1" style="width:100px;">
+        <button id="btnRestartParagraph" class="btn">Reiniciar en párrafo</button>
+      </div>
+      <div style="margin-top:8px;">
+        <button id="prevPara" class="btn ghost">Párrafo anterior</button>
+        <button id="nextPara" class="btn ghost">Siguiente párrafo</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="reader-area" aria-label="Área de lectura">
+    <div class="left">
+      <div class="display" id="displayArea" style="background:var(--bg);">
+        <div id="wordDisplay" class="word" style="text-align:center;">Pulsa Iniciar</div>
+      </div>
+      <div class="meta" style="margin-top:10px;">
+        <div class="stat-block">
+          <div class="small-muted">Palabra global</div>
+          <div class="stat-value"><span id="globalIndex">0</span></div>
+        </div>
+        <div class="stat-block">
+          <div class="small-muted">Párrafo</div>
+          <div class="stat-value"><span id="currentParagraph">0</span>/<span id="totalParagraphs">0</span></div>
+        </div>
+        <div class="stat-block">
+          <div class="small-muted">Velocidad actual (WPM)</div>
+          <div class="stat-value"><span id="currentWpmDisplay">0</span></div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <!-- Botón único: Iniciar / Detener -->
+        <button id="startStopBtn" class="btn">Iniciar</button>
+        <button id="resetBtn" class="btn secondary">Reiniciar</button>
+        <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+          <label class="small">Velocidad rápida</label>
+          <input type="range" id="quickWpm" min="50" max="2000" value="400" style="width:160px;">
+        </div>
+      </div>
+    </div>
+
+    <aside class="right">
+      <div class="card">
+        <label><strong>Párrafos detectados</strong></label>
+        <div class="paragraphs" id="paragraphList" role="list"></div>
+      </div>
+
+      <div class="card" style="margin-top:12px;">
+        <label><strong>Estado</strong></label>
+        <div class="small" id="status">Inactivo</div>
+        <div style="margin-top:8px;">
+          <div class="small-muted">Controles rápidos:</div>
+          <ul style="margin:6px 0 0 18px;">
+            <li>Espacio: iniciar/detener</li>
+            <li>Flecha derecha/izquierda: siguiente/anterior fragmento</li>
+            <li>Flecha arriba/abajo: siguiente/anterior párrafo</li>
+          </ul>
+        </div>
+      </div>
+    </aside>
+  </section>
+
+  <div class="footer">
+    <div class="small-muted">Sugerencia: carga un archivo o pega el texto, ajusta velocidades y pausas, luego pulsa Iniciar.</div>
+    <div class="small-muted">Hecho con JavaScript puro — todo en un solo archivo.</div>
+  </div>
+</div>
+
+<script>
+/* Lectura rápida con:
+   - botón único Iniciar / Detener (cuando está detenido muestra "Iniciar", cuando está en marcha muestra "Detener")
+   - selección de tipografía, estilo y tamaño
+   - velocidad inicial y velocidad final (interpolación lineal)
+   - visualizador de velocidad instantánea (WPM)
+   - carga de archivos .txt .pdf .docx .odt (usa PDF.js y JSZip)
+*/
+
+// Elementos
+const inputText = document.getElementById('inputText');
+const loadSample = document.getElementById('loadSample');
+const fileInput = document.getElementById('fileInput');
+const clearText = document.getElementById('clearText');
+
+const fontSelect = document.getElementById('fontSelect');
+const fontStyleSelect = document.getElementById('fontStyle');
+const fontSizeInput = document.getElementById('fontSize');
+const bgColor = document.getElementById('bgColor');
+const fgColor = document.getElementById('fgColor');
+
+const wpmInput = document.getElementById('wpm');
+const wpmRange = document.getElementById('wpmRange');
+const wpmEndInput = document.getElementById('wpmEnd');
+const wpmEndRange = document.getElementById('wpmEndRange');
+const quickWpm = document.getElementById('quickWpm');
+
+const wordsPerChunkInput = document.getElementById('wordsPerChunk');
+const pauseComma = document.getElementById('pauseComma');
+const pauseSemicolon = document.getElementById('pauseSemicolon');
+const pausePeriod = document.getElementById('pausePeriod');
+const pauseColon = document.getElementById('pauseColon');
+const pauseEllipsis = document.getElementById('pauseEllipsis');
+const pauseExtraMs = document.getElementById('pauseExtraMs');
+
+const alignment = document.getElementById('alignment');
+const startWordInput = document.getElementById('startWord');
+const endWordInput = document.getElementById('endWord');
+
+const restartParagraph = document.getElementById('restartParagraph');
+const btnRestartParagraph = document.getElementById('btnRestartParagraph');
+const prevPara = document.getElementById('prevPara');
+const nextPara = document.getElementById('nextPara');
+
+const wordDisplay = document.getElementById('wordDisplay');
+const displayArea = document.getElementById('displayArea');
+const startStopBtn = document.getElementById('startStopBtn');
+const resetBtn = document.getElementById('resetBtn');
+const statusEl = document.getElementById('status');
+const paragraphList = document.getElementById('paragraphList');
+const globalIndexEl = document.getElementById('globalIndex');
+const currentParagraphEl = document.getElementById('currentParagraph');
+const totalParagraphsEl = document.getElementById('totalParagraphs');
+const currentWpmDisplay = document.getElementById('currentWpmDisplay');
+
+// Estado
+let paragraphs = [];
+let paragraphWords = [];
+let globalWords = [];
+let isRunning = false;
+let timer = null;
+let currentGlobalIndex = 0;
+let currentParagraphIndex = 0;
+
+// ---------- Extracción de archivos ----------
+async function extractTextFromPDF(arrayBuffer){
+  try{
+    const loadingTask = pdfjsLib.getDocument({data: arrayBuffer});
+    const pdf = await loadingTask.promise;
+    let fullText = '';
+    for(let i=1;i<=pdf.numPages;i++){
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const strings = content.items.map(it => it.str);
+      fullText += strings.join(' ') + '\n\n';
+    }
+    return fullText.trim();
+  }catch(err){
+    console.error('Error extrayendo PDF:', err);
+    throw new Error('No se pudo extraer texto del PDF.');
+  }
+}
+
+async function extractTextFromZip(arrayBuffer){
+  try{
+    const zip = await JSZip.loadAsync(arrayBuffer);
+    if(zip.file('word/document.xml')){
+      const docXml = await zip.file('word/document.xml').async('string');
+      return extractTextFromXmlString(docXml);
+    }
+    if(zip.file('content.xml')){
+      const contentXml = await zip.file('content.xml').async('string');
+      return extractTextFromXmlString(contentXml);
+    }
+    const xmlFiles = Object.keys(zip.files).filter(n => n.endsWith('.xml'));
+    for(const name of xmlFiles){
+      const xml = await zip.file(name).async('string');
+      const txt = extractTextFromXmlString(xml);
+      if(txt && txt.trim().length>0) return txt;
+    }
+    throw new Error('No se encontró contenido de texto en el archivo ZIP.');
+  }catch(err){
+    console.error('Error extrayendo ZIP:', err);
+    throw new Error('No se pudo extraer texto del archivo (docx/odt).');
+  }
+}
+
+function extractTextFromXmlString(xml){
+  let s = xml.replace(/<\/w:p>/g, '\n\n').replace(/<\/text:p>/g, '\n\n').replace(/<br\s*\/?>/g, '\n');
+  s = s.replace(/<[^>]+>/g, '');
+  s = s.replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&apos;/g,"'");
+  s = s.replace(/\s+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
+  return s;
+}
+
+async function handleFile(file){
+  const name = file.name || '';
+  const ext = (name.split('.').pop() || '').toLowerCase();
+  updateStatus('Extrayendo texto del archivo...');
+  try{
+    if(ext === 'txt' || file.type === 'text/plain'){
+      const text = await file.text();
+      inputText.value = text;
+      processText();
+      updateStatus(`Archivo .txt cargado: ${name}`);
+      return;
+    }
+    if(ext === 'pdf' || file.type === 'application/pdf'){
+      const arrayBuffer = await file.arrayBuffer();
+      const text = await extractTextFromPDF(arrayBuffer);
+      inputText.value = text;
+      processText();
+      updateStatus(`PDF cargado: ${name}`);
+      return;
+    }
+    if(ext === 'docx' || ext === 'odt' || file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || file.type === 'application/vnd.oasis.opendocument.text'){
+      const arrayBuffer = await file.arrayBuffer();
+      const text = await extractTextFromZip(arrayBuffer);
+      inputText.value = text;
+      processText();
+      updateStatus(`${ext.toUpperCase()} cargado: ${name}`);
+      return;
+    }
+    if(file.type === 'application/zip' || file.type === '' ){
+      const arrayBuffer = await file.arrayBuffer();
+      try{
+        const text = await extractTextFromZip(arrayBuffer);
+        inputText.value = text;
+        processText();
+        updateStatus(`Archivo ZIP/ODT/DOCX procesado: ${name}`);
+        return;
+      }catch(e){}
+    }
+    try{
+      const text = await file.text();
+      if(text && text.trim().length>0){
+        inputText.value = text;
+        processText();
+        updateStatus(`Archivo cargado como texto: ${name}`);
+        return;
+      }
+    }catch(e){}
+    alert('Formato no soportado o no se pudo extraer texto del archivo seleccionado.');
+    updateStatus('Error: formato no soportado');
+  }catch(err){
+    console.error(err);
+    alert('Ocurrió un error al procesar el archivo: ' + (err.message || err));
+    updateStatus('Error al extraer texto');
+  }
+}
+
+loadSample.addEventListener('click', ()=>{
+  fileInput.value = '';
+  fileInput.click();
+});
+fileInput.addEventListener('change', async (e)=>{
+  const f = e.target.files && e.target.files[0];
+  if(!f) return;
+  await handleFile(f);
+});
+clearText.addEventListener('click', ()=>{
+  inputText.value = '';
+  processText();
+  updateStatus('Texto limpiado');
+});
+
+// ---------- Procesamiento de texto y UI ----------
+function splitParagraphs(text){
+  const normalized = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+  const parts = normalized.split(/\n\s*\n/).map(p => p.trim()).filter(p => p.length>0);
+  return parts;
+}
+
+function splitWordsKeepPunctuation(paragraph){
+  const raw = paragraph.trim().split(/\s+/).filter(Boolean);
+  return raw;
+}
+
+function rebuildGlobalWords(){
+  globalWords = [];
+  paragraphWords = paragraphs.map(p => splitWordsKeepPunctuation(p));
+  paragraphWords.forEach((arr, pIdx) => {
+    arr.forEach(w => {
+      globalWords.push({word:w, paragraph:pIdx});
+    });
+  });
+}
+
+function applyFontFamily(){
+  const fam = fontSelect.value || "Georgia, serif";
+  document.documentElement.style.setProperty('--font-family', fam);
+  wordDisplay.style.fontFamily = fam;
+}
+
+function applyFontStyle(){
+  const val = fontStyleSelect.value || 'normal-400';
+  const parts = val.split('-');
+  const style = parts[0] || 'normal';
+  const weight = parts[1] || '400';
+  document.documentElement.style.setProperty('--font-weight', weight);
+  document.documentElement.style.setProperty('--font-style', style);
+  wordDisplay.style.fontWeight = weight;
+  wordDisplay.style.fontStyle = style;
+}
+
+function applyFontSize(){
+  const size = Math.max(8, parseInt(fontSizeInput.value,10) || 30);
+  wordDisplay.style.fontSize = size + 'px';
+}
+
+function updateFontAndColors(){
+  document.documentElement.style.setProperty('--bg', bgColor.value);
+  document.documentElement.style.setProperty('--fg', fgColor.value);
+  applyFontFamily();
+  applyFontStyle();
+  applyFontSize();
+  displayArea.style.background = bgColor.value;
+  wordDisplay.style.color = fgColor.value;
+  wordDisplay.style.textAlign = alignment.value;
+}
+
+function renderParagraphList(){
+  paragraphList.innerHTML = '';
+  paragraphs.forEach((p, idx) => {
+    const btn = document.createElement('button');
+    btn.textContent = `Párrafo ${idx+1} — ${paragraphWords[idx] ? paragraphWords[idx].length : 0} palabras`;
+    btn.className = (idx===currentParagraphIndex) ? 'active' : '';
+    btn.onclick = () => {
+      jumpToParagraph(idx);
+    };
+    paragraphList.appendChild(btn);
+  });
+  totalParagraphsEl.textContent = paragraphs.length;
+  currentParagraphEl.textContent = (paragraphs.length>0) ? (currentParagraphIndex+1) : 0;
+}
+
+function updateStatus(text){
+  statusEl.textContent = text;
+}
+
+function processText(){
+  const text = inputText.value || '';
+  paragraphs = splitParagraphs(text);
+  rebuildGlobalWords();
+  if (currentGlobalIndex >= globalWords.length) currentGlobalIndex = Math.max(0, globalWords.length-1);
+  if (currentParagraphIndex >= paragraphs.length) currentParagraphIndex = Math.max(0, paragraphs.length-1);
+  renderParagraphList();
+  updateStatus('Listo');
+  updateDisplayPlaceholder();
+  updateGlobalIndexUI();
+}
+
+function updateDisplayPlaceholder(){
+  if(globalWords.length===0){
+    wordDisplay.textContent = 'Pulsa Iniciar';
+    currentWpmDisplay.textContent = '0';
+  } else {
+    const idx = Math.min(currentGlobalIndex, globalWords.length-1);
+    wordDisplay.textContent = globalWords[idx].word;
+    currentWpmDisplay.textContent = Math.round(getCurrentWpmForIndex(idx));
+  }
+}
+
+function updateGlobalIndexUI(){
+  globalIndexEl.textContent = (globalWords.length>0) ? (currentGlobalIndex+1) : 0;
+  currentParagraphEl.textContent = (paragraphs.length>0) ? (currentParagraphIndex+1) : 0;
+  totalParagraphsEl.textContent = paragraphs.length;
+  renderParagraphList();
+}
+
+// Saltar a párrafo
+function jumpToParagraph(pIdx){
+  if(pIdx<0 || pIdx>=paragraphs.length) return;
+  currentParagraphIndex = pIdx;
+  let idx = 0;
+  for(let i=0;i<pIdx;i++){
+    idx += paragraphWords[i].length;
+  }
+  currentGlobalIndex = idx;
+  updateGlobalIndexUI();
+  updateDisplayPlaceholder();
+}
+
+prevPara.addEventListener('click', ()=>{
+  if(currentParagraphIndex>0) jumpToParagraph(currentParagraphIndex-1);
+});
+nextPara.addEventListener('click', ()=>{
+  if(currentParagraphIndex < paragraphs.length-1) jumpToParagraph(currentParagraphIndex+1);
+});
+
+btnRestartParagraph.addEventListener('click', ()=>{
+  const p = Math.max(1, parseInt(restartParagraph.value,10) || 1);
+  if(p>paragraphs.length){ alert('Número de párrafo fuera de rango'); return; }
+  jumpToParagraph(p-1);
+  stopReading();
+  updateStatus(`Reiniciado en párrafo ${p}`);
+});
+
+// ---------- Velocidad interpolada ----------
+function getStartEndIndices(){
+  const startWord = Math.max(1, parseInt(startWordInput.value,10) || 1);
+  const endWord = Math.max(0, parseInt(endWordInput.value,10) || 0);
+  const startIdx = Math.max(0, startWord - 1);
+  const endIdx = (endWord === 0) ? (globalWords.length - 1) : Math.max(0, endWord - 1);
+  return {startIdx, endIdx};
+}
+
+function getCurrentWpmForIndex(idx){
+  const wpmStart = Math.max(1, parseInt(wpmInput.value,10) || 400);
+  const wpmEnd = Math.max(1, parseInt(wpmEndInput.value,10) || wpmStart);
+  const {startIdx, endIdx} = getStartEndIndices();
+  if(globalWords.length === 0) return wpmStart;
+  if(endIdx <= startIdx) return wpmStart;
+  const clamped = Math.min(Math.max(idx, startIdx), endIdx);
+  const ratio = (clamped - startIdx) / (endIdx - startIdx);
+  const current = wpmStart + (wpmEnd - wpmStart) * ratio;
+  return Math.max(1, current);
+}
+
+function baseDelayMsForIndex(idx){
+  const currentWpm = getCurrentWpmForIndex(idx);
+  return 60000 / currentWpm;
+}
+
+// ---------- Puntuación y avance ----------
+function punctuationMultiplierForText(text){
+  if(/\.\.\.|…$/.test(text)) return parseFloat(pauseEllipsis.value) || 1.6;
+  if(/[,:;]$/.test(text)){
+    if(/,$/.test(text)) return parseFloat(pauseComma.value) || 0.5;
+    if(/;$/.test(text)) return parseFloat(pauseSemicolon.value) || 0.8;
+    if(/:$/.test(text)) return parseFloat(pauseColon.value) || 1.0;
+  }
+  if(/[.!?]$/.test(text)) return parseFloat(pausePeriod.value) || 1.2;
+  return 0;
+}
+
+function getChunkFromIndex(idx){
+  const n = Math.max(1, parseInt(wordsPerChunkInput.value,10) || 1);
+  const chunk = [];
+  for(let i=0;i<n && (idx+i) < globalWords.length;i++){
+    chunk.push(globalWords[idx+i].word);
+  }
+  return chunk.join(' ');
+}
+
+function advanceOnce(){
+  if(globalWords.length===0) return false;
+  const {startIdx, endIdx} = getStartEndIndices();
+
+  if(currentGlobalIndex < startIdx) currentGlobalIndex = startIdx;
+  if(currentGlobalIndex > endIdx) {
+    stopReading();
+    updateStatus('Finalizado (límite alcanzado)');
+    return false;
+  }
+
+  const paraIdx = globalWords[currentGlobalIndex].paragraph;
+  if(paraIdx !== currentParagraphIndex){
+    currentParagraphIndex = paraIdx;
+    renderParagraphList();
+  }
+
+  const chunkText = getChunkFromIndex(currentGlobalIndex);
+  wordDisplay.textContent = chunkText;
+  updateGlobalIndexUI();
+
+  const base = baseDelayMsForIndex(currentGlobalIndex) * Math.max(1, parseInt(wordsPerChunkInput.value,10) || 1);
+  const pMult = punctuationMultiplierForText(chunkText);
+  const extraMs = parseInt(pauseExtraMs.value,10) || 0;
+  let delay = base;
+  if(pMult>0){
+    delay += base * pMult;
+  }
+  delay += extraMs;
+
+  currentWpmDisplay.textContent = Math.round(getCurrentWpmForIndex(currentGlobalIndex));
+
+  currentGlobalIndex += Math.max(1, parseInt(wordsPerChunkInput.value,10) || 1);
+
+  if(currentGlobalIndex > endIdx+1){
+    currentGlobalIndex = endIdx+1;
+  }
+
+  return delay;
+}
+
+// ---------- Loop de lectura (botón único Iniciar/Detener) ----------
+function startReading(){
+  if(globalWords.length===0){ alert('No hay texto para leer.'); return; }
+  if(isRunning) return;
+  isRunning = true;
+  startStopBtn.textContent = 'Detener';
+  updateStatus('Reproduciendo');
+  runLoop();
+}
+
+function runLoop(){
+  if(!isRunning) return;
+  const delay = advanceOnce();
+  if(delay === false){
+    isRunning = false;
+    startStopBtn.textContent = 'Iniciar';
+    return;
+  }
+  timer = setTimeout(() => {
+    if(currentGlobalIndex >= globalWords.length){
+      isRunning = false;
+      startStopBtn.textContent = 'Iniciar';
+      updateStatus('Finalizado');
+      return;
+    }
+    runLoop();
+  }, delay);
+}
+
+function stopReading(){
+  if(!isRunning){
+    // already stopped: ensure UI consistent
+    isRunning = false;
+    startStopBtn.textContent = 'Iniciar';
+    updateStatus('Detenido');
+    if(timer){ clearTimeout(timer); timer = null; }
+    return;
+  }
+  isRunning = false;
+  startStopBtn.textContent = 'Iniciar';
+  updateStatus('Detenido');
+  if(timer) { clearTimeout(timer); timer = null; }
+}
+
+// ---------- Controles y atajos ----------
+resetBtn.addEventListener('click', ()=>{
+  const startWord = Math.max(1, parseInt(startWordInput.value,10) || 1);
+  currentGlobalIndex = startWord - 1;
+  if(globalWords[currentGlobalIndex]) currentParagraphIndex = globalWords[currentGlobalIndex].paragraph;
+  updateGlobalIndexUI();
+  updateDisplayPlaceholder();
+  stopReading();
+  updateStatus('Reiniciado al inicio configurado');
+});
+
+startStopBtn.addEventListener('click', ()=>{
+  if(isRunning) stopReading();
+  else startReading();
+});
+
+// sincronizar sliders y inputs de WPM
+wpmRange.addEventListener('input', ()=>{
+  wpmInput.value = wpmRange.value;
+  quickWpm.value = wpmRange.value;
+});
+wpmInput.addEventListener('change', ()=>{
+  wpmRange.value = wpmInput.value;
+  quickWpm.value = wpmInput.value;
+});
+
+wpmEndRange.addEventListener('input', ()=>{
+  wpmEndInput.value = wpmEndRange.value;
+});
+wpmEndInput.addEventListener('change', ()=>{
+  wpmEndRange.value = wpmEndInput.value;
+});
+
+// quickWpm ajusta la velocidad inicial (atajo visual)
+quickWpm.addEventListener('input', ()=>{
+  wpmInput.value = quickWpm.value;
+  wpmRange.value = quickWpm.value;
+});
+
+// Actualizar estilos al cambiar
+fontSelect.addEventListener('change', updateFontAndColors);
+fontStyleSelect.addEventListener('change', updateFontAndColors);
+fontSizeInput.addEventListener('change', updateFontAndColors);
+bgColor.addEventListener('input', updateFontAndColors);
+fgColor.addEventListener('input', updateFontAndColors);
+alignment.addEventListener('change', ()=>{
+  wordDisplay.style.textAlign = alignment.value;
+});
+
+// Actualizar palabras por fragmento
+wordsPerChunkInput.addEventListener('change', ()=>{
+  const v = Math.max(1, parseInt(wordsPerChunkInput.value,10) || 1);
+  wordsPerChunkInput.value = v;
+});
+
+// Procesar texto al perder foco o al pegar
+inputText.addEventListener('blur', processText);
+inputText.addEventListener('input', processText);
+
+// Atajos de teclado
+document.addEventListener('keydown', (e)=>{
+  if(e.code === 'Space'){
+    e.preventDefault();
+    if(isRunning) stopReading(); else startReading();
+  } else if(e.key === 'ArrowRight'){
+    e.preventDefault();
+    if(isRunning) { stopReading(); }
+    const delay = advanceOnce();
+    updateStatus('Avanzado manualmente');
+    if(delay===false) updateStatus('Finalizado');
+  } else if(e.key === 'ArrowLeft'){
+    e.preventDefault();
+    if(isRunning) stopReading();
+    const n = Math.max(1, parseInt(wordsPerChunkInput.value,10) || 1);
+    currentGlobalIndex = Math.max(0, currentGlobalIndex - n - 1);
+    updateDisplayPlaceholder();
+    updateGlobalIndexUI();
+    updateStatus('Retrocedido manualmente');
+  } else if(e.key === 'ArrowUp'){
+    e.preventDefault();
+    if(currentParagraphIndex>0) jumpToParagraph(currentParagraphIndex-1);
+  } else if(e.key === 'ArrowDown'){
+    e.preventDefault();
+    if(currentParagraphIndex < paragraphs.length-1) jumpToParagraph(currentParagraphIndex+1);
+  }
+});
+
+// Inicialización
+(function init(){
+  updateFontAndColors();
+  processText();
+  wpmRange.value = wpmInput.value;
+  wpmEndRange.value = wpmEndInput.value;
+  quickWpm.value = wpmInput.value;
+  startWordInput.value = 1;
+  endWordInput.value = 0;
+})();
+</script>
+</body>
+</html>
